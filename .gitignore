@@ -4,4 +4,4 @@ Makefile.old
 blib
 pod2htm*
 .build
-Net-SMS-RoutoMessaging-*
+Net-SMS-Mach-*
