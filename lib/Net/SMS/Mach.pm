@@ -8,6 +8,7 @@ use warnings;
 use Carp;
 use HTTP::Request::Common;
 use LWP::UserAgent;
+use Encode qw(encode decode);
 
 use constant {
     PROVIDER1 => "http://gw1.promessaging.com/sms.php",
@@ -34,20 +35,23 @@ sub send_sms {
     $ua->agent("Net::SMS::Mach/$Net::SMS::Mach::VERSION");
 
     $args{number} =~ s{\D}{}g;
-    $args{number} = "+$args{number}";
 
-    my $snr = "Opera Verification";
-    my $enc = "ucs";
+    my $message = $args{message};
+    my $enc;
+    if ($args{encode}) {
+        $enc = "ucs";
+        $message = encode_ucs($message);
+    }
 
     my $hash = {
-        dnr => $args{number},
-        srn => $snr,
-        msg => $args{message},
-        enc => $enc,
+        dnr => "+$args{number}",
+        snr => $args{sender},
+        msg => $message,
+        encoding => $enc,
     };
 
-    my $url  = PROVIDER1;
-    my $resp = $ua->request(POST $url, [ id => $self->{userid}, pass => $self->{password}, $hash ]);
+    my $url  = $args{backup_server} ? PROVIDER2 : PROVIDER1;
+    my $resp = $ua->request(POST $url, [ id => $self->{userid}, pw => $self->{password}, %$hash ]);
     my $as_string = $resp->as_string;
 
     if (! $resp->is_success) {
@@ -68,6 +72,19 @@ sub send_sms {
     return wantarray ? ($return, $res) : $return;
 }
 
+
+sub encode_ucs
+{
+    my $message = shift;
+
+    utf8::decode($message);
+    utf8::decode($message);
+    utf8::upgrade($message);
+
+    my $encoded = unpack('H*', encode('UCS-2BE', $message));
+
+    return $encoded;
+}
 1;
 
 __END__
@@ -78,13 +95,14 @@ __END__
 
   # Create a testing sender
   my $sms = Net::SMS::Mach->new(
-      username => 'testuser', password => 'testpass'
+      userid => '123456', password => 'testpass'
   );
 
   # Send a message
   my ($sent, $status) = $sms->send_sms(
       message => "All your base are belong to us",
       number  => '1234567890',
+      sender  => '+441234567890',
   );
 
   $sent will contain a true / false if the sending worked,
@@ -96,12 +114,12 @@ __END__
       number  => '1234567890',
   );
 
-  # If you want a better description of the status message, use the
-  # long_status parameter
+  # If your message is utf8 encoded, or you are unsure if it's iso-8859-1,
+  # use the encode flag to get the message UCS encoded.
   my ($sent, $status, $desc) = $sms->send_sms(
       message => "All your base are belong to us",
       number  => '1234567890',
-      long_status => 1,
+      encode => 1,
   );
 
   if ($sent) {
@@ -115,25 +133,25 @@ __END__
 =head1 DESCRIPTION
 
 Perl module to send SMS messages through the HTTP API provided by Mach
-(Mach.com).
+(mach.com).
 
 =head1 METHODS
 
 =head2 new
 
-new( username => 'testuser', password => 'testpass' )
+new( userid => '123456', password => 'testpass' )
 
 Nothing fancy. You need to supply your username and password
 in the constructor, or it will complain loudly.
 
 =head2 send_sms
 
-send_sms(number => $phone_number, message => $message)
+send_sms(number => $phone_number, message => $message, encode => 0, backup_server => 1)
 
 Uses the API to send a message given in C<$message> to
 the phone number given in C<$phone_number>.
 
-Phone number should be given with only digits. No "+" or spaces, like this:
+Phone number should be given with only digits, or with a "+" prefix.
 
 =over 4
 
@@ -141,9 +159,10 @@ Phone number should be given with only digits. No "+" or spaces, like this:
 
 =back
 
-Returns a true / false value and a status message. The message is "success" if the server has accepted your query. It does not mean that the message has been delivered.
-If the long_status argument is set, then it also returns a long description as the third value.
+Returns a true / false value and a status message. The message is "success" if the server has accepted your query.
+This does not mean that the message has been delivered.
+
 
 =head1 SEE ALSO
 
-Mach website, http://www.Mach.com/
+Mach website, http://www.mach.com/
